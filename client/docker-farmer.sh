@@ -1,10 +1,18 @@
-#!/bin/sh -x
+#!/bin/sh
 
-DEBIAN="9 10 11 sid"
+set -x
+set -e
 
-for d in ${DEBIAN}; do
-  host=debian-${d}-docker
+# Dockerhub
+USER="bertrandlupart"
+REPO="pikefarm-worker"
+DHUB=${USER}/${REPO}
+
+TAGS=$(curl -s https://hub.docker.com/v2/repositories/${USER}/${REPO}/tags |jq -r '.results[].name')
+
+for d in ${TAGS}; do
+  host=${d}-docker
   docker run -it --rm \
     -v "$(pwd):/pikefarm" -w /pikefarm \
-    -h "${host}" debian:${d} docker-farmer/${host}.sh
+    -h "${host}" ${DHUB}:${d} ./client.sh
 done
