@@ -2,17 +2,18 @@
 
 set -x
 set -e
+set -o pipefail
 
 # Dockerhub
-USER="bertrandlupart"
-REPO="pikefarm-worker"
-DHUB=${USER}/${REPO}
+user="bertrandlupart"
+repo="pikefarm-worker"
 
-TAGS=$(curl -s https://hub.docker.com/v2/repositories/${USER}/${REPO}/tags |jq -r '.results[].name')
+tags=$(curl --silent --fail --location --show-error \
+  "https://hub.docker.com/v2/repositories/${user}/${repo}/tags" \
+  | jq --raw-output '.results[].name')
 
-for d in ${TAGS}; do
-  host=${d}-docker
-  docker run -it --rm \
-    -v "$(pwd):/pikefarm" -w /pikefarm \
-    -h "${host}" ${DHUB}:${d} ./client.sh
+for tag in ${tags}; do
+  docker run --rm \
+    --volume="$(pwd):/pikefarm" --workdir="/pikefarm" \
+    --hostname="${tag}-docker" "${user}/${repo}:${tag}" "./client.sh"
 done
