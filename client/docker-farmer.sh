@@ -2,7 +2,7 @@
 
 set -x
 set -e
-set -o pipefail
+#set -o pipefail
 
 # Dockerhub
 user="bertrandlupart"
