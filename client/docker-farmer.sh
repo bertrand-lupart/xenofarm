@@ -6,10 +6,10 @@ set -e
 
 # Dockerhub
 user="bertrandlupart"
-repo="pikefarm-worker"
+repo="pikefarm-workers"
 
 
-# xenofarm user in pikefarm-worker containers
+# xenofarm user in pikefarm-workers containers
 uid=817
 gid=817
 
