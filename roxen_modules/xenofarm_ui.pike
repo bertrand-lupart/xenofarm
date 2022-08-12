@@ -278,15 +278,34 @@ static class Build
   }
 
   mapping(string:int|string) get_task_entities(int client, int task) {
-    mapping(string:int|string) ret = ([ "status" : "NONE",
+    Task tobj = project->tasks[task];
+    string name = (string)task;
+    string pname = "Task #" + name;
+    array(string) path = ({});
+    if (tobj && tobj->name != "") {
+      name = tobj->name;
+      pname = String.capitalize(replace(tobj->name, "_", " "));
+      path = tobj->path/"-";
+    }
+    mapping(string:int|string) ret = ([ "task_id": task,
+					"name": name,
+					"pname": pname,
+					"path": path,
+					"status" : "NONE",
 					"time_spent" : 0,
+					"pretty_time_spent" : fmt_timespan(0),
 					"warnings" : 0 ]);
     array|mapping t = task_results[client];
     if(!t) return ret;
     t = t[task];
     if(!t) return ret;
-    return ([ "status" : t[0],
+    return ([ "task_id": task,
+	      "name": name,
+	      "pname": pname,
+	      "path": path,
+	      "status" : t[0],
 	      "time_spent": t[1],
+	      "pretty_time_spent": fmt_timespan(t[1]),
 	      "warnings": t[2],
     ]);
   }
@@ -397,6 +416,10 @@ static class Project(string db, string project, string remote, string branch)
   int last_changed; // ditto when we noticed a change in the matrix
   int next_update; // we won't update our state until we reach this time
 
+#ifdef THREADS
+  Thread.Mutex update_mux = Thread.Mutex();
+#endif
+
   string _sprintf(int t) {
     switch(t) {
       case 'O': return sprintf("Project(/* %d builds */)", sizeof(builds));
@@ -411,6 +434,9 @@ static class Project(string db, string project, string remote, string branch)
   //!   The number of seconds left until the next update will happen.
   int update_builds(Sql.Sql xfdb)
   {
+#ifdef THREADS
+    mixed update_lock = update_mux->lock();
+#endif
     // Only update internal state once a minute
     int now = time(1);
     latency = query("latency");
@@ -561,7 +587,6 @@ static Project get_project(RequestID id, mapping(string:string)|void args)
 class TagXF_Update {
   inherit RXML.Tag;
   constant name = "xf-update";
-  int xflock;
 
   class Frame {
     inherit RXML.Frame;
@@ -579,8 +604,7 @@ class TagXF_Update {
       if(!xfdb)
 	RXML.run_error("Couldn't connect to SQL server" +
 		       (error ? ": " + error[0] : "") + "\n");
-      if(!xflock++)
-	CACHE(p->update_builds(xfdb));
+      CACHE(p->update_builds(xfdb));
       vars->updated = fmt_time(p->next_update-latency);
     }
 
@@ -588,7 +612,6 @@ class TagXF_Update {
       result = content;
       id->misc->xenofarm_db = 0;
       id->misc->xenofarm_project = 0;
-      xflock--;
     }
   }
 }
@@ -786,20 +809,21 @@ class TagEmitXF_Task {
       client = (int)m->client;
     }
     if(build && client) {
-      array(int) list;
+      array(int|Task) list;
       if(m->tasks=="leafs")
 	list = p->ordered_leaf_tasks;
       else if(m->tasks)
 	list = (array(int))(m->tasks/"\n");
       else {
-	list = indices(p->tasks);
+	list = values(p->tasks);
 	sort(list->sort_order, list);
 	list = list->id;
       }
       Build b = p->get_build(build);
       array ret = ({});
-      foreach( list, int task)
+      foreach( list, int task) {
 	ret += ({ b->get_task_entities(client, task) });
+      }
       return ret;
     }
 
